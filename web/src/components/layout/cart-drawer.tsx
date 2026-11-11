@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { Minus, Plus, ShoppingBag, X } from "lucide-react";
 import { useCartStore } from "@/lib/store/cart";
@@ -18,17 +18,49 @@ export function CartDrawer() {
   const toggleSubscription = useCartStore((state) => state.toggleSubscription);
   const hasSubscription = lines.some((line) => line.slug === "filtre-abonelik-6-ay");
   const subtotal = cartSubtotal(lines);
+  const drawerRef = useRef<HTMLElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const triggerRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeCart();
-    };
-    document.addEventListener("keydown", onKeyDown);
+    triggerRef.current = document.activeElement as HTMLElement | null;
+    closeButtonRef.current?.focus();
     document.body.style.overflow = "hidden";
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeCart();
+        return;
+      }
+      if (event.key !== "Tab") return;
+
+      const root = drawerRef.current;
+      if (!root) return;
+      const focusable = Array.from(
+        root.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((element) => element.offsetParent !== null);
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (!first || !last) return;
+
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", onKeyDown);
     return () => {
       document.removeEventListener("keydown", onKeyDown);
       document.body.style.overflow = "";
+      triggerRef.current?.focus();
     };
   }, [isOpen, closeCart]);
 
@@ -38,11 +70,13 @@ export function CartDrawer() {
     <div className="fixed inset-0 z-50">
       <button
         type="button"
-        aria-label="Sepeti kapat"
+        tabIndex={-1}
+        aria-hidden="true"
         onClick={closeCart}
         className="absolute inset-0 bg-ink/35 backdrop-blur-[2px]"
       />
       <aside
+        ref={drawerRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="cart-title"
@@ -53,6 +87,7 @@ export function CartDrawer() {
             Sepetim
           </h2>
           <button
+            ref={closeButtonRef}
             type="button"
             onClick={closeCart}
             aria-label="Kapat"

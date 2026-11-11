@@ -185,6 +185,12 @@ create table public.appointments (
 
 create index appointments_profile_idx on public.appointments (profile_id, slot_start desc);
 
+-- Aynı teknisyen + aynı başlangıç için iptal edilmemiş iki randevu olamaz.
+-- Slot kilidini bypass eden doğrudan insert'lere karşı ikinci savunma hattı.
+create unique index appointments_technician_start_uidx
+  on public.appointments (technician_id, slot_start)
+  where status = 'booked';
+
 create table public.appointment_slots (
   id uuid primary key default gen_random_uuid(),
   technician_id uuid not null references public.technicians (id) on delete cascade,
@@ -214,6 +220,14 @@ as $$
 declare
   v_updated int;
 begin
+  -- Kimlik taklidi ve kalıcı slot DoS'unu önle: yalnızca kendi profil adına hold.
+  if p_slot_id is null or p_profile_id is null or auth.uid() is distinct from p_profile_id then
+    return false;
+  end if;
+
+  -- Süresi dolmuş hold'ları fırsatçı olarak temizle (pg_cron yoksa da).
+  perform public.release_expired_slot_holds();
+
   update public.appointment_slots
      set status = 'held',
          held_until = now() + interval '10 minutes',
@@ -235,6 +249,11 @@ as $$
 declare
   v_updated int;
 begin
+  -- Yalnızca kendi adına onaylama yapılabilir.
+  if p_slot_id is null or p_profile_id is null or auth.uid() is distinct from p_profile_id then
+    return false;
+  end if;
+
   update public.appointment_slots
      set status = 'booked',
          held_until = null
@@ -265,6 +284,23 @@ begin
 end;
 $$;
 
+-- Süzülen hold'ları dakikada bir serbest bırak. pg_cron yoksa (local/dev)
+-- hold RPC'si ve slots_read_free politikası süresi dolmuş hold'u zaten boş sayar.
+do $$
+begin
+  if exists (select 1 from pg_available_extensions where name = 'pg_cron') then
+    create extension if not exists pg_cron;
+    perform cron.schedule(
+      'release-expired-slot-holds',
+      '* * * * *',
+      'select public.release_expired_slot_holds()'
+    );
+  end if;
+exception when others then
+  raise warning 'pg_cron schedule kurulamadı: %', sqlerrm;
+end;
+$$;
+
 -- ─────────────────────────────── su sertliği ───────────────────────────────
 create table public.water_hardness (
   id uuid primary key default gen_random_uuid(),
@@ -273,7 +309,7 @@ create table public.water_hardness (
   hardness_ppm int not null check (hardness_ppm >= 0),
   level hardness_level not null,
   source text,
-  unique (il, ilce)
+  unique nulls not distinct (il, ilce)
 );
 
 create index water_hardness_lookup_idx on public.water_hardness (il, ilce);
@@ -353,6 +389,8 @@ create policy "orders_select_own" on public.orders for select using (auth.uid() 
 create policy "orders_insert_own" on public.orders for insert with check (auth.uid() = profile_id);
 create policy "order_items_select_own" on public.order_items for select
   using (exists (select 1 from public.orders o where o.id = order_id and o.profile_id = auth.uid()));
+create policy "order_items_insert_own" on public.order_items for insert
+  with check (exists (select 1 from public.orders o where o.id = order_id and o.profile_id = auth.uid()));
 
 -- installations / subscriptions: kendi kaydı
 create policy "installations_select_own" on public.installations for select using (auth.uid() = profile_id);
@@ -372,7 +410,11 @@ create policy "appointments_insert_own" on public.appointments for insert with c
 
 -- slots: giriş yapmış kullanıcı boş slotları görür; yazma yalnızca RPC/service role
 create policy "slots_read_free" on public.appointment_slots for select
-  to authenticated using (status = 'free' or held_by = auth.uid());
+  to authenticated using (
+    status = 'free'
+    or (status = 'held' and held_until < now())
+    or held_by = auth.uid()
+  );
 
 -- water_hardness: herkes okur
 create policy "water_hardness_public_read" on public.water_hardness for select using (true);
@@ -398,5 +440,6 @@ grant select, insert, update on public.profiles, public.addresses, public.orders
 grant select on public.appointment_slots to authenticated;
 grant execute on function public.hold_appointment_slot(uuid, uuid) to authenticated;
 grant execute on function public.confirm_appointment_slot(uuid, uuid) to authenticated;
+grant execute on function public.release_expired_slot_holds() to authenticated;
 grant all on all tables in schema public to service_role;
 grant all on all functions in schema public to service_role;

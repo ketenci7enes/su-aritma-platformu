@@ -39,6 +39,12 @@ Supabase anahtarlarını girdiğinizde istemci devreye girer; şema için
 | `npm run format` | Prettier |
 | `npx @lhci/cli autorun` | Lighthouse bütçe denetimi |
 
+## Commit kuralı
+
+[Conventional Commits](https://www.conventionalcommits.org/): `feat:`, `fix:`, `docs:`,
+`chore:`, `ci:`, `refactor:`, `test:`. Kapsam opsiyonel (`feat(panel): …`).
+Commit mesajları Türkçe yazılır; başlık 72 karakteri geçmez.
+
 ## Yapı
 
 ```

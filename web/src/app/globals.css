@@ -36,7 +36,7 @@
   --text-body--line-height: 1.6;
 
   --radius-card: 1rem;
-  --shadow-soft: 0 8px 30px -12px rgb(2 132 199 / 0.18);
+  --shadow-soft: 0 8px 30px -12px rgb(3 105 161 / 0.18);
 }
 
 @media (min-width: 768px) {

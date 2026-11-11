@@ -10,7 +10,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { path: "/cihaz-bul", priority: 0.8 },
     { path: "/kurumsal", priority: 0.7 },
     { path: "/kvkk", priority: 0.3 },
-    { path: "/panel/giris", priority: 0.2 },
   ];
 
   return [
