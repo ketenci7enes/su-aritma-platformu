@@ -28,3 +28,6 @@ next-env.d.ts
 
 # superpowers scratch
 .superpowers/
+
+# graphify knowledge graph (üretilebilir; `graphify extract . --code-only`)
+graphify-out/
