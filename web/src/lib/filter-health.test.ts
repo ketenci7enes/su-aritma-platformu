@@ -55,6 +55,46 @@ describe("computeFilterHealth", () => {
     expect(health.percentRemaining).toBeCloseTo(17.8, 1);
     expect(health.status).toBe("soon");
   });
+
+  it("179. günde ömür dolmak üzere ve sipariş uyarısı verir", () => {
+    const health = computeFilterHealth(installed, new Date("2026-06-29T00:00:00.000Z"));
+    expect(health.daysElapsed).toBe(179);
+    expect(health.daysRemaining).toBe(1);
+    expect(health.needsReorder).toBe(true);
+    expect(health.status).toBe("soon");
+  });
+
+  it("gelecek kurulum tarihinde negatif gün üretmez", () => {
+    const health = computeFilterHealth(
+      "2026-02-01T00:00:00.000Z",
+      new Date("2026-01-01T00:00:00.000Z"),
+    );
+    expect(health.daysElapsed).toBe(0);
+    expect(health.daysRemaining).toBe(180);
+    expect(health.percentRemaining).toBe(100);
+    expect(health.status).toBe("healthy");
+  });
+
+  it("geçersiz kurulum tarihinde NaN yerine 'due' döner", () => {
+    const health = computeFilterHealth("geçersiz-tarih", new Date("2026-01-11T00:00:00.000Z"));
+    expect(Number.isNaN(health.daysRemaining)).toBe(false);
+    expect(Number.isNaN(health.percentRemaining)).toBe(false);
+    expect(health.daysRemaining).toBe(0);
+    expect(health.percentRemaining).toBe(0);
+    expect(health.needsReorder).toBe(true);
+    expect(health.status).toBe("due");
+    expect(Number.isNaN(health.dueAt.getTime())).toBe(false);
+  });
+
+  it("lifetimeDays sıfır veya negatifse hata fırlatır", () => {
+    expect(() => computeFilterHealth(installed, new Date(), 0)).toThrow(RangeError);
+    expect(() => computeFilterHealth(installed, new Date(), -10)).toThrow(RangeError);
+    expect(() => computeFilterHealth(installed, new Date(), Number.NaN)).toThrow(RangeError);
+  });
+
+  it("geçersiz 'now' tarihinde hata fırlatır", () => {
+    expect(() => computeFilterHealth(installed, new Date("bozuk"))).toThrow(RangeError);
+  });
 });
 
 describe("daysElapsedInIstanbul", () => {

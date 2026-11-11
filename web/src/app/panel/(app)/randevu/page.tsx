@@ -87,8 +87,15 @@ export default function PanelAppointmentPage() {
     }
     const slot = confirmed.slots.find((item) => item.id === heldId);
     if (!slot) return;
+    try {
+      bookAppointment(slot, "install");
+    } catch (bookingError) {
+      setError(bookingError instanceof Error ? bookingError.message : "Randevu oluşturulamadı");
+      setHeldId(null);
+      setHeldStart(null);
+      return;
+    }
     setSlots(confirmed.slots);
-    bookAppointment(slot, "install");
     setHeldId(null);
     setHeldStart(null);
     setMessage(null);

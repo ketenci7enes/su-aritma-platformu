@@ -12,6 +12,7 @@ import type {
   SupportTicket,
 } from "@/lib/types";
 import { mockPaymentProvider } from "@/lib/payments/mock-provider";
+import { isSlotAvailable } from "@/lib/appointments/slots";
 
 export interface DemoSubscription {
   id: string;
@@ -59,8 +60,14 @@ export interface DemoState {
   updateAddress: (id: string, address: Partial<Address>) => void;
   removeAddress: (id: string) => void;
   setSlots: (slots: Slot[]) => void;
-  cancelSubscription: () => void;
+  /** Sağlayıcı çağrısı başarısız olursa aboneliği eski hâline döndürür. */
+  cancelSubscription: () => Promise<CancelSubscriptionResult>;
   addB2BLead: (lead: Omit<B2BLead, "id" | "createdAt">) => B2BLead;
+}
+
+export interface CancelSubscriptionResult {
+  ok: boolean;
+  error?: string;
 }
 
 const ORDER_PREFIX = "SP";
@@ -164,6 +171,27 @@ export const useDemoStore = create<DemoState>()(
       },
 
       bookAppointment: (slot, type) => {
+        const state = get();
+        const now = new Date();
+        const current = state.slots.find((item) => item.id === slot.id);
+
+        if (current) {
+          if (!isSlotAvailable(current, state.user?.id ?? "", now)) {
+            throw new Error("Bu randevu slotu artık müsait değil; lütfen başka bir saat seçin.");
+          }
+          const alreadyBooked = state.appointments.some(
+            (item) =>
+              item.status === "booked" &&
+              item.slotStart === current.start &&
+              item.technicianName === current.technicianName,
+          );
+          if (alreadyBooked) {
+            throw new Error("Bu saat için zaten bir randevunuz var.");
+          }
+        } else {
+          throw new Error("Randevu slotu bulunamadı; takvimi yenileyip tekrar deneyin.");
+        }
+
         const appointment: Appointment = {
           id: makeId("RND"),
           slotStart: slot.start,
@@ -171,9 +199,9 @@ export const useDemoStore = create<DemoState>()(
           type,
           status: "booked",
         };
-        set((state) => ({
-          appointments: [appointment, ...state.appointments],
-          slots: state.slots.map((item) =>
+        set((latest) => ({
+          appointments: [appointment, ...latest.appointments],
+          slots: latest.slots.map((item) =>
             item.id === slot.id
               ? { ...item, status: "booked" as const, heldBy: undefined, heldUntil: undefined }
               : item,
@@ -209,19 +237,31 @@ export const useDemoStore = create<DemoState>()(
 
       setSlots: (slots) => set({ slots }),
 
-      cancelSubscription: () => {
-        set((state) => ({
-          subscription: state.subscription
-            ? { ...state.subscription, status: "cancelled" }
-            : state.subscription,
-        }));
-        void mockPaymentProvider.cancelSubscription({
-          id: get().subscription?.id ?? "unknown",
-          customerRef: get().user?.id ?? "anonymous",
-          planId: "plan-6",
-          status: "cancelled",
-        });
-        logAutomation("subscription.cancelled", { userId: get().user?.id });
+      cancelSubscription: async () => {
+        const state = get();
+        const subscription = state.subscription;
+
+        if (!subscription || subscription.status !== "active") {
+          return { ok: false, error: "İptal edilecek aktif bir abonelik yok." };
+        }
+
+        set({ subscription: { ...subscription, status: "cancelled" } });
+
+        try {
+          await mockPaymentProvider.cancelSubscription({
+            id: subscription.id,
+            customerRef: state.user?.id ?? "anonymous",
+            planId: "plan-6",
+            status: "cancelled",
+          });
+        } catch {
+          // Sağlayıcı iptali reddetti: iyimser güncellemeyi geri al.
+          set({ subscription });
+          return { ok: false, error: "Abonelik iptal edilemedi; lütfen tekrar deneyin." };
+        }
+
+        logAutomation("subscription.cancelled", { userId: state.user?.id });
+        return { ok: true };
       },
 
       addB2BLead: (lead) => {

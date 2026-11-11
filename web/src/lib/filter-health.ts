@@ -44,10 +44,40 @@ export function computeFilterHealth(
   lifetimeDays: number = FILTER_LIFETIME_DAYS,
   reorderDay: number = FILTER_REORDER_DAY,
 ): FilterHealth {
-  const installed = typeof installedAt === "string" ? new Date(installedAt) : installedAt;
-  const daysElapsed = daysElapsedInIstanbul(installed, now);
+  if (!Number.isFinite(lifetimeDays) || lifetimeDays <= 0) {
+    throw new RangeError("Filtre ömrü (lifetimeDays) sıfırdan büyük olmalı");
+  }
+  if (!Number.isFinite(reorderDay) || reorderDay < 0) {
+    throw new RangeError("Yeniden sipariş günü (reorderDay) negatif olamaz");
+  }
+
+  const reference = new Date(now);
+  if (Number.isNaN(reference.getTime())) {
+    throw new RangeError("Geçersiz 'now' tarihi");
+  }
+
+  const installed = new Date(installedAt);
+  if (Number.isNaN(installed.getTime())) {
+    // Bozuk/eski kayıt: yanlışlıkla "sağlıklı %100" göstermek yerine
+    // kullanıcıyı değişim uyarısına düşür ve NaN üretme.
+    const fallbackInstalled = new Date(reference.getTime() - lifetimeDays * DAY_MS);
+    return {
+      installedAt: fallbackInstalled,
+      dueAt: reference,
+      daysElapsed: lifetimeDays,
+      daysRemaining: 0,
+      percentRemaining: 0,
+      needsReorder: true,
+      status: "due",
+    };
+  }
+
+  const daysElapsed = daysElapsedInIstanbul(installed, reference);
   const daysRemaining = Math.max(0, lifetimeDays - daysElapsed);
-  const percentRemaining = Math.round((daysRemaining / lifetimeDays) * 1000) / 10;
+  const percentRemaining = Math.max(
+    0,
+    Math.min(100, Math.round((daysRemaining / lifetimeDays) * 1000) / 10),
+  );
 
   const status: FilterHealth["status"] =
     daysRemaining === 0 ? "due" : percentRemaining < 20 ? "soon" : "healthy";

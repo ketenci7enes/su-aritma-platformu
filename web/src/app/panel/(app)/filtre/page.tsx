@@ -15,7 +15,20 @@ export default function PanelFilterPage() {
   const subscription = useDemoStore((state) => state.subscription);
   const cancelSubscription = useDemoStore((state) => state.cancelSubscription);
   const [confirming, setConfirming] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
   const order = orders[0];
+
+  async function handleCancelSubscription() {
+    setCancelError(null);
+    setCancelling(true);
+    const result = await cancelSubscription();
+    setCancelling(false);
+    setConfirming(false);
+    if (!result.ok) {
+      setCancelError(result.error ?? "Abonelik iptal edilemedi.");
+    }
+  }
 
   if (!order) {
     return (
@@ -75,9 +88,9 @@ export default function PanelFilterPage() {
               <>
                 <Button
                   variant="secondary"
+                  loading={cancelling}
                   onClick={() => {
-                    cancelSubscription();
-                    setConfirming(false);
+                    void handleCancelSubscription();
                   }}
                 >
                   İptali onayla
@@ -97,6 +110,12 @@ export default function PanelFilterPage() {
             </Link>
           )}
         </div>
+
+        {cancelError ? (
+          <p role="alert" className="mt-2 text-xs font-semibold text-danger">
+            {cancelError}
+          </p>
+        ) : null}
 
         {confirming ? (
           <p className="mt-2 text-xs text-ink-soft">
