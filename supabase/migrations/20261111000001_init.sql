@@ -290,11 +290,15 @@ do $$
 begin
   if exists (select 1 from pg_available_extensions where name = 'pg_cron') then
     create extension if not exists pg_cron;
-    perform cron.schedule(
-      'release-expired-slot-holds',
-      '* * * * *',
-      'select public.release_expired_slot_holds()'
-    );
+
+    -- Idempotent: aynı isimli job varsa yeniden zamanlama.
+    if not exists (select 1 from cron.job where jobname = 'release-expired-slot-holds') then
+      perform cron.schedule(
+        'release-expired-slot-holds',
+        '* * * * *',
+        'select public.release_expired_slot_holds()'
+      );
+    end if;
   end if;
 exception when others then
   raise warning 'pg_cron schedule kurulamadı: %', sqlerrm;
