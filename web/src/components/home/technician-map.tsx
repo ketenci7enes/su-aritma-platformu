@@ -2,15 +2,21 @@
 
 import { useState } from "react";
 import { MapPin, Wrench } from "lucide-react";
-import { regions, regionStats } from "@/lib/data/regions";
+import { regions, regionStats, regionsByPlate } from "@/lib/data/regions";
+import { TURKEY_MAP_VIEWBOX, turkeyProvinces } from "@/lib/data/turkey-provinces.generated";
 import { cn } from "@/lib/utils";
 
-const TURKEY_PATH =
-  "M4,32 L9,26 L15,28 L19,22 L26,21 L31,15 L38,17 L44,13 L51,15 L57,12 L64,15 L71,14 L78,18 L85,22 L90,28 L87,34 L80,37 L83,42 L79,48 L75,52 L77,58 L71,61 L72,67 L66,70 L61,76 L54,78 L49,74 L44,76 L39,71 L33,69 L29,63 L24,60 L20,53 L15,50 L13,43 L8,39 Z";
+const { width: MAP_WIDTH, height: MAP_HEIGHT } = TURKEY_MAP_VIEWBOX;
 
+/**
+ * Türkiye teknisyen ağı haritası — 81 il sınırı amCharts geodata'dan (CC BY 4.0)
+ * üretilir (`web/scripts/generate-turkey-map.mjs`). Teknisyen verisi olan iller
+ * pin ile işaretlenir; klavye ve fare ile seçilebilir. Seçili ilin ayrıntısı
+ * haritanın altındaki kartta gösterilir (harita üzerini kapatmaz).
+ */
 export function TechnicianMap() {
   const [activeId, setActiveId] = useState<string | null>("antalya");
-  const active = regions.find((region) => region.id === activeId);
+  const active = regions.find((region) => region.id === activeId) ?? null;
 
   return (
     <section aria-labelledby="map-title" className="container-page py-16 md:py-24">
@@ -48,20 +54,40 @@ export function TechnicianMap() {
           </p>
         </div>
 
-        <div className="relative mx-auto w-full max-w-xl">
-          <div className="relative aspect-square">
+        <div className="mx-auto w-full max-w-xl">
+          <div className="relative" style={{ aspectRatio: `${MAP_WIDTH} / ${MAP_HEIGHT}` }}>
             <svg
-              viewBox="0 0 100 100"
+              viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`}
               role="img"
-              aria-label="Türkiye teknisyen ağı haritası"
+              aria-label="Türkiye teknisyen ağı haritası: 81 il sınırı ve hizmet verilen 12 il"
               className="h-full w-full"
             >
-              <path
-                d={TURKEY_PATH}
-                className="fill-primary-soft stroke-primary-light"
-                strokeWidth="0.7"
-              />
+              <g aria-hidden="true">
+                {turkeyProvinces.map((province) => {
+                  const isActive = province.id === active?.plate;
+                  const covered = regionsByPlate.has(province.id);
+                  return (
+                    <path
+                      key={province.id}
+                      d={province.d}
+                      className={cn(
+                        "transition-colors duration-200",
+                        isActive
+                          ? "fill-primary stroke-primary-dark"
+                          : covered
+                            ? "fill-primary-light/70 stroke-primary/50 hover:fill-primary/35"
+                            : "fill-primary-soft/60 stroke-border-soft hover:fill-primary-light/50",
+                      )}
+                      strokeWidth={1.2}
+                      strokeLinejoin="round"
+                    />
+                  );
+                })}
+              </g>
+
               {regions.map((region) => {
+                const province = turkeyProvinces.find((item) => item.id === region.plate);
+                if (!province) return null;
                 const isActive = region.id === activeId;
                 return (
                   <g
@@ -69,46 +95,75 @@ export function TechnicianMap() {
                     tabIndex={0}
                     role="button"
                     aria-label={`${region.name}: ${region.technicianCount} aktif teknisyen, ortalama kurulum ${region.avgInstallHours} saat`}
+                    aria-pressed={isActive}
                     onMouseEnter={() => setActiveId(region.id)}
                     onFocus={() => setActiveId(region.id)}
                     onClick={() => setActiveId(region.id)}
-                    className="cursor-pointer focus-visible:outline-2 focus-visible:outline-primary"
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setActiveId(region.id);
+                      }
+                    }}
+                    className="cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
                     <circle
-                      cx={region.x}
-                      cy={region.y}
-                      r={isActive ? 4.4 : 3.2}
+                      cx={province.cx}
+                      cy={province.cy}
+                      r={isActive ? 12 : 9}
                       className={cn(
                         "transition-all",
-                        isActive ? "fill-primary" : "fill-primary/60 hover:fill-primary",
+                        isActive ? "fill-primary-dark" : "fill-primary/80 hover:fill-primary",
                       )}
                     />
-                    <circle cx={region.x} cy={region.y} r="1.2" fill="white" pointerEvents="none" />
+                    <circle
+                      cx={province.cx}
+                      cy={province.cy}
+                      r={isActive ? 4.5 : 3.5}
+                      fill="white"
+                      pointerEvents="none"
+                    />
                   </g>
                 );
               })}
             </svg>
+          </div>
 
+          <div
+            aria-live="polite"
+            className="mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-2xl border border-border-soft bg-surface px-4 py-3"
+          >
             {active ? (
-              <div
-                role="tooltip"
-                className="pointer-events-none absolute z-10 w-48 -translate-x-1/2 -translate-y-[115%] rounded-xl border border-border-soft bg-surface p-3 text-left shadow-xl"
-                style={{ left: `${active.x}%`, top: `${active.y}%` }}
-              >
+              <>
                 <p className="text-sm font-bold">{active.name}</p>
-                <p className="mt-1 flex items-center gap-1 text-xs text-ink-soft">
-                  <Wrench className="h-3.5 w-3.5" aria-hidden="true" />
+                <p className="flex items-center gap-1 text-xs text-ink-soft">
+                  <Wrench className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
                   {active.technicianCount} aktif teknisyen
                 </p>
-                <p className="mt-0.5 text-xs text-ink-soft">
-                  Ort. kurulum {active.avgInstallHours} saat
-                </p>
-                <p className="mt-0.5 text-xs font-semibold text-primary-dark">
+                <p className="text-xs text-ink-soft">Ort. kurulum {active.avgInstallHours} saat</p>
+                <p className="text-xs font-semibold text-primary-dark">
                   {active.activeCustomers.toLocaleString("tr-TR")}+ aktif müşteri
                 </p>
-              </div>
-            ) : null}
+              </>
+            ) : (
+              <p className="text-xs text-ink-soft">
+                Bir il seçin; teknisyen ve kurulum bilgisi burada görünür.
+              </p>
+            )}
           </div>
+
+          <p className="mt-3 text-center text-[10px] text-ink-soft">
+            Harita:{" "}
+            <a
+              href="https://www.amcharts.com/svg-maps/turkey/"
+              target="_blank"
+              rel="noreferrer noopener"
+              className="underline underline-offset-2 hover:text-primary"
+            >
+              amCharts
+            </a>{" "}
+            (CC BY 4.0)
+          </p>
         </div>
       </div>
     </section>

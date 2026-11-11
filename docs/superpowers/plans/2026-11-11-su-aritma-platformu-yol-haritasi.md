@@ -259,7 +259,21 @@ Implementasyonlar: `MockPaymentProvider` (Faz 1 — başarılı/başarısız sim
 - [ ] **2.8** Prod: domain + SSL, Vercel prod ortamı, env'ler, Sentry (hata) + basit uptime izleme
 - [ ] **2.9** Admin yaklaşımı kararı: Supabase Studio (hızlı) vs basit admin UI (öneri: Studio ile başla, ihtiyaç olursa UI)
 
-**DoD:** Sahte bir test siparişi gerçek ödemeyle alınır, kurulum randevusu teknisyenin Telegram'ına düşer, 170 gün tetiği sandbox'ta doğrulanır.
+#### Faz 1'den devralınan ertelenen işler
+
+- [ ] **2.10** Lighthouse **mobil** preset + mobil bütçeler (Faz 1'de yalnız masaüstü koşuldu)
+- [ ] **2.11** `Link > Button` iç içe semantik borcu: CTA'ları tek bir `ButtonLink` atomuna indir
+- [ ] **2.12** `Tooltip` atomunu `components/ui` altına taşı (Faz 1'de harita/destek içinde inline)
+- [ ] **2.13** `web/README.md` Next şablon metnini gerçek proje dokümanıyla değiştir
+- [ ] **2.14** Supabase/Iyzico/n8n **gerçek entegrasyon testleri** (Faz 1'de yalnız birim + mock E2E)
+- [ ] **2.15** Teknisyen haritası verisini gerçek kadroya bağla; il bazlı `technicians` tablosundan besle (şu an sabit demo verisi)
+
+**DoD:** Sahte bir test siparişi gerçek ödemeyle alınır, kurulum randevusu teknisyenin Telegram'ına düşer, 170 gün tetiği sandbox'ta doğrulanır; 2.10–2.15 kapanmış olur.
+
+> **Faz 1 durumu (2026-11-11):** Faz 0 ve Faz 1 tamamlandı, commit `feat/faz-0-1-temel-site-panel`
+> dalında. Doğrulama: 15 test dosyası / 102 test, `tsc`, ESLint, Prettier, `next build` (33 sayfa),
+> Playwright 5/5, Lighthouse masaüstü 4 URL bütçe içinde. Yukarıdaki 2.10–2.15 maddeleri
+> bilinçli olarak Faz 2'ye taşındı.
 
 ---
 

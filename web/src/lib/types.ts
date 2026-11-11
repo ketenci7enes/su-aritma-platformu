@@ -34,9 +34,8 @@ export interface Region {
   technicianCount: number;
   avgInstallHours: number;
   activeCustomers: number;
-  /** Türkiye SVG görünümünde 0-100 yüzde koordinatı. */
-  x: number;
-  y: number;
+  /** Türkiye haritasındaki il plaka kodu (ISO 3166-2:TR), örn. "TR-34". */
+  plate: string;
 }
 
 export interface Review {
