@@ -90,3 +90,19 @@ jobs:
           name: lighthouse-report
           path: web/.lighthouseci
           retention-days: 7
+
+  db:
+    name: Veritabanı kapısı
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Sürüm sabit: sürpriz CLI güncellemesi migration davranışını kaydırmasın.
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 3.1.0
+      - run: supabase start
+      - run: supabase db reset
+      - run: supabase test db
+      - if: always()
+        run: supabase stop --no-backup
+

@@ -29,5 +29,9 @@ next-env.d.ts
 # superpowers scratch
 .superpowers/
 
+# supabase CLI yerel durumu (makineye özgü, üretilebilir)
+supabase/.temp/
+supabase/.branches/
+
 # graphify knowledge graph (üretilebilir; `graphify extract . --code-only`)
 graphify-out/

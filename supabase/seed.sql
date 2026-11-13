@@ -1,0 +1,60 @@
+-- seed.sql — yalnızca katalog/referans verisi (idempotent).
+-- Kaynak: web/src/lib/data/products.ts (statik katalog, Supabase yoksa yedek).
+-- Kural: products silinmez; pasife alma is_active=false ile yapılır (DATABASE_RULES §8).
+-- Stok yalnız ilk eklemede yazılır; yöneticinin sayım düzeltmesi seed ile ezilmez.
+
+insert into public.products
+  (slug, name, category, price_try, stock, stages, capacity_lpd, summary, specs, is_active)
+values
+  ('aquapure-slim-4', 'AquaPure Slim 4', 'device', 12900.00, 24, 4, 190,
+   'Dar mutfaklar için kompakt, 4 aşamalı temel arıtma çözümü.',
+   '{"Arıtma aşaması":"4 aşama","Günlük kapasite":"190 L/gün","Tank hacmi":"8 L","Filtre ömrü":"6 ay / 2.500 L","Çalışma basıncı":"2-6 bar","Garanti":"3 yıl","Kurulum tipi":"Tezgah altı","Pompa":"Yok"}'::jsonb,
+   true),
+  ('aquapure-home-5', 'AquaPure Home 5', 'device', 16900.00, 41, 5, 285,
+   '3-5 kişilik aileler için dengeli kapasite ve 5 aşamalı filtrasyon.',
+   '{"Arıtma aşaması":"5 aşama","Günlük kapasite":"285 L/gün","Tank hacmi":"8 L","Filtre ömrü":"6 ay / 2.500 L","Çalışma basıncı":"2-6 bar","Garanti":"3 yıl","Kurulum tipi":"Tezgah altı","Pompa":"Var"}'::jsonb,
+   true),
+  ('aquapure-pro-6', 'AquaPure Pro 6', 'device', 21900.00, 18, 6, 380,
+   'Yüksek kireçli bölgelerde 6 aşamalı, mineral geri kazanımlı sistem.',
+   '{"Arıtma aşaması":"6 aşama","Günlük kapasite":"380 L/gün","Tank hacmi":"8 L","Filtre ömrü":"6 ay / 2.500 L","Çalışma basıncı":"2-6 bar","Garanti":"3 yıl","Kurulum tipi":"Tezgah altı","Pompa":"Var","Mineral filtresi":"Var"}'::jsonb,
+   true),
+  ('aquapure-max-7', 'AquaPure Max 7', 'device', 27900.00, 12, 7, 570,
+   'Kalabalık haneler ve küçük işletmeler için 7 aşamalı üst segment.',
+   '{"Arıtma aşaması":"7 aşama","Günlük kapasite":"570 L/gün","Tank hacmi":"12 L","Filtre ömrü":"6 ay / 2.500 L","Çalışma basıncı":"2-6 bar","Garanti":"3 yıl","Kurulum tipi":"Tezgah altı","Pompa":"Var","Akıllı ekran":"Var"}'::jsonb,
+   true),
+  ('aquapure-horeca-8', 'AquaPure HORECA 8', 'device', 39900.00, 7, 8, 1500,
+   'Otel, restoran ve kafe için sürekli akışlı endüstriyel arıtma.',
+   '{"Arıtma aşaması":"8 aşama","Günlük kapasite":"1500 L/gün","Tank hacmi":"12 L","Filtre ömrü":"6 ay / 2.500 L","Çalışma basıncı":"2-6 bar","Garanti":"3 yıl","Kurulum tipi":"Zemin üstü","Pompa":"Çift pompa","Akıllı ekran":"Var","Ticari garanti":"2 yıl"}'::jsonb,
+   true),
+  ('6-aylik-filtre-seti', '6 Aylık Filtre Seti', 'filter', 1490.00, 120, null, null,
+   'Sediment, karbon blok ve GAC filtrelerinden oluşan 6 aylık bakım seti.',
+   '{"Set içeriği":"3 filtre","Uyumluluk":"Slim 4 / Home 5 / Pro 6","Değişim":"6 ay"}'::jsonb,
+   true),
+  ('12-aylik-filtre-seti', '12 Aylık Filtre Seti', 'filter', 2690.00, 80, null, null,
+   'Yıllık bakım için iki adet 6 aylık set; abonelikte ek indirim.',
+   '{"Set içeriği":"6 filtre","Uyumluluk":"Tüm modeller","Değişim":"6 ayda bir"}'::jsonb,
+   true),
+  ('filtre-abonelik-6-ay', 'Filtre Aboneliği (6 ay)', 'filter', 1190.00, 999, null, null,
+   '170. günde otomatik hatırlatma, kapıya filtre teslimi, ücretsiz değişim randevusu.',
+   '{"Dönem":"6 ay","İptal":"Tek tıkla","Kargo":"Ücretsiz"}'::jsonb,
+   true),
+  ('premium-arman-musluk', 'Premium Armatür Musluğu', 'part', 890.00, 60, null, null,
+   'Krom kaplama, 360° dönebilen, tek kollu arıtma musluğu.',
+   '{"Malzeme":"Pirinç + krom","Montaj":"Tezgah deliği Ø35 mm","Garanti":"2 yıl"}'::jsonb,
+   true),
+  ('8-litre-tank', '8 Litre Basınçlı Tank', 'part', 1290.00, 35, null, null,
+   'Gıdaya uygun iç kaplama, 8 litre depolama tankı.',
+   '{"Hacim":"8 L","Ön basınç":"0,5 bar","Garanti":"2 yıl"}'::jsonb,
+   true),
+  ('ro-membran-75-gpd', 'RO Membran 75 GPD', 'part', 1890.00, 45, null, null,
+   '75 galon/gün kapasiteli, yüksek verimli ters ozmoz membranı.',
+   '{"Kapasite":"75 GPD","Tuz giderimi":"%96+","Değişim":"18-24 ay"}'::jsonb,
+   true)
+on conflict (slug) do update
+  set name = excluded.name,
+      category = excluded.category,
+      price_try = excluded.price_try,
+      stages = excluded.stages,
+      capacity_lpd = excluded.capacity_lpd,
+      summary = excluded.summary,
+      specs = excluded.specs;

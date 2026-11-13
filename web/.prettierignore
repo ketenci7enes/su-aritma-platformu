@@ -1,0 +1,4 @@
+# Üretilmiş dosyalar: elle düzenlenmez, biçimlendirme üreticiye/CLI'ya aittir.
+# (checkout'ta üretilir; prettier'ın satır kırma kuralına tabi tutulmaz.)
+src/lib/data/turkey-provinces.generated.ts
+src/lib/supabase/database.types.ts

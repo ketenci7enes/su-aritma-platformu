@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/supabase/database.types";
 import { b2bLeadSchema } from "@/lib/validation";
 import { checkRateLimit } from "@/lib/rate-limit";
 
@@ -80,7 +81,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "not_configured" }, { status: 500 });
   }
 
-  const supabase = createClient(url, key, { auth: { persistSession: false } });
+  const supabase = createClient<Database>(url, key, { auth: { persistSession: false } });
   const { data, error } = await supabase
     .from("b2b_leads")
     .insert({
