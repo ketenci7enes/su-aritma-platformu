@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { b2bLeadSchema } from "@/lib/validation";
-import { useDemoStore } from "@/lib/store/demo";
 
 const initial = {
   company: "",
@@ -18,7 +17,6 @@ const initial = {
 };
 
 export function B2BForm() {
-  const addB2BLead = useDemoStore((state) => state.addB2BLead);
   const [form, setForm] = useState(initial);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<"idle" | "sending" | "success" | "error">("idle");
@@ -44,8 +42,14 @@ export function B2BForm() {
 
     setStatus("sending");
     try {
-      const lead = addB2BLead(parsed.data);
-      setReference(lead.id);
+      const response = await fetch("/api/b2b-lead", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(parsed.data),
+      });
+      if (!response.ok) throw new Error("lead_failed");
+      const { id } = (await response.json()) as { id: string };
+      setReference(id);
       setStatus("success");
       setForm(initial);
     } catch {

@@ -486,3 +486,14 @@ $$;
 
 revoke all on function public.set_product_stock(uuid, int, text) from public, anon, authenticated;
 grant execute on function public.set_product_stock(uuid, int, text) to authenticated;
+
+
+-- ─────────────────────── b2b formu: yazma sunucuya taşındı ───────────────────────
+-- Anon form yazımı artık POST /api/b2b-lead üzerinden service_role ile yapılır.
+drop policy if exists "b2b_leads_insert" on public.b2b_leads;
+
+-- KRİTİK: tablo düzeyi REVOKE, hardening'in verdiği KOLON grant'lerini silmez.
+-- Önce kolon yetkileri, sonra tablo yetkisi kaldırılır; kalanı has_column_privilege ile test edilir.
+revoke insert (company, contact_name, phone, sector, city, message)
+  on public.b2b_leads from anon, authenticated;
+revoke all on public.b2b_leads from anon, authenticated;

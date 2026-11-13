@@ -19,16 +19,20 @@ export type CheckoutInput = z.input<typeof checkoutSchema>;
 export type CheckoutData = z.output<typeof checkoutSchema>;
 
 export const b2bLeadSchema = z.object({
-  company: z.string().trim().min(2, "Firma adı zorunlu"),
-  contactName: z.string().trim().min(2, "İletişim kişisi zorunlu"),
+  company: z.string().trim().min(2, "Firma adı zorunlu").max(200, "Firma adı çok uzun"),
+  contactName: z
+    .string()
+    .trim()
+    .min(2, "İletişim kişisi zorunlu")
+    .max(120, "İletişim kişisi çok uzun"),
   phone: z
     .string()
     .trim()
     .transform((value) => value.replace(/[\s()-]/g, ""))
     .pipe(z.string().regex(phoneRegex, "Geçerli bir telefon girin")),
-  city: z.string().trim().min(2, "Şehir zorunlu"),
+  city: z.string().trim().min(2, "Şehir zorunlu").max(80, "Şehir çok uzun"),
   sector: z.enum(["hotel", "restaurant", "cafe", "other"]),
-  message: z.string().trim().max(1000, "Mesaj en fazla 1000 karakter").optional(),
+  message: z.string().trim().max(2000, "Mesaj en fazla 2000 karakter").optional(),
 });
 
 export type B2BLeadInput = z.input<typeof b2bLeadSchema>;
