@@ -1,5 +1,19 @@
 # FAZ 3 / Dilim 1 — Yönetici Paneli Veri Temeli: Uygulama Planı
 
+> ## ⛔ BU PLAN GEÇERSİZ — yerine `2026-11-13-faz-3-dilim-0-veri-guvenligi.md`
+>
+> 12–13 Kasım 2026'da gelen `DATABASE_RULES.md` (bağlayıcı) ve test edilmiş
+> `20261113000001_security_hardening.sql` bu plandaki altı kararı geçersiz kıldı:
+>
+> 1. **Migration sırası yanlış:** `20261112000001_admin_panel.sql`, `20261113000001_security_hardening.sql`'den **önce** sıralanır. Hardening'in `revoke all` bloğu admin panelinin tüm grant'lerini silerdi. Yeni dilim `20261113000002_admin_data_foundation.sql` kullanır.
+> 2. **`profiles.role` yasak:** `DATABASE_RULES` §4 rolü ayrı `user_roles` tablosunda (veya `app_metadata`) istiyor. Yeni tasarım `user_roles` + `is_admin()`.
+> 3. **Stok trigger'ı kaldırıldı:** Stok artık `mark_order_paid` (service_role) içinde düşer. Bu plandaki `on_order_status_change` trigger'ı eklenirse stok **iki kez** düşerdi.
+> 4. **`init.sql` hiç çalışmıyordu:** `filter_due_at ... generated always as (installed_at + interval '180 days')` immutable olmadığı için `db reset` hata veriyordu. Bu plandaki tüm "db reset + test" adımları havada kalıyordu.
+> 5. **Hata mesajları:** Türkçe `raise exception` metinleri yerine makine-okunur kodlar (`insufficient_stock`) zorunlu (§7).
+> 6. **Test listesi eksikti:** `DATABASE_RULES` §12'deki 11 saldırı sınıfı ve `paid → cancelled` stok iadesi bu planda yoktu.
+>
+> Tarihsel kayıt olarak saklanır. Uygulanacak plan: `docs/superpowers/plans/2026-11-13-faz-3-dilim-0-veri-guvenligi.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Yönetici rolünü, ürün/stok şemasını ve satışta otomatik stok düşüşünü veritabanında kurmak; RLS ve stok davranışını gerçek pgTAP testleriyle kanıtlamak.

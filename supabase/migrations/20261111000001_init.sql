@@ -1,8 +1,7 @@
 -- Su Arıtma Platformu — başlangıç şeması
 -- Tüm zaman damgaları timestamptz (UTC depolama, Europe/Istanbul gösterim).
 -- Tüm fiyatlar numeric(10,2). Her tabloda RLS açıktır.
-
-create extension if not exists pgcrypto;
+-- Not: pgcrypto gerekmez; gen_random_uuid() PostgreSQL 13+ ile dahilidir.
 
 -- ─────────────────────────────── enum'lar ───────────────────────────────
 create type product_category as enum ('device', 'filter', 'part');
@@ -129,11 +128,29 @@ create table public.installations (
   product_id uuid not null references public.products (id) on delete restrict,
   installed_at timestamptz not null default now(),
   warranty_until timestamptz,
-  filter_due_at timestamptz generated always as (installed_at + interval '180 days') stored,
+  -- Üretilmiş kolon DEĞİL: timestamptz + interval immutable olmadığı için
+  -- generated ... stored kullanılamaz. Değer BEFORE INSERT trigger'ı ile yazılır.
+  filter_due_at timestamptz,
   created_at timestamptz not null default now()
 );
 
 create index installations_profile_idx on public.installations (profile_id);
+
+create or replace function public.set_filter_due_at()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  -- Her zaman türet: istemci gönderse bile yok sayılır, installed_at düzeltilirse tazelenir.
+  new.filter_due_at := new.installed_at + interval '180 days';
+  return new;
+end;
+$$;
+
+create trigger installations_filter_due
+  before insert or update of installed_at on public.installations
+  for each row execute function public.set_filter_due_at();
 
 create table public.subscriptions (
   id uuid primary key default gen_random_uuid(),
