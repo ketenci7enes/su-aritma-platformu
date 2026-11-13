@@ -14,11 +14,12 @@ insert into auth.users (id, instance_id, aud, role, email, encrypted_password,
   ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '00000000-0000-0000-0000-000000000000',
    'authenticated', 'authenticated', 'silinecek@test.local', '', now(), now(), now(), '{}', '{}');
 
-select plan(11);
+select plan(13);
 
 insert into public.products (id, slug, name, category, price_try, stock) values
   ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'silme-urunu', 'Silme Ürünü', 'device', 10, 0),
-  ('cccccccc-cccc-cccc-cccc-cccccccccccc', 'sayim-urunu', 'Sayım Ürünü', 'device', 20, 10);
+  ('cccccccc-cccc-cccc-cccc-cccccccccccc', 'sayim-urunu', 'Sayım Ürünü', 'device', 20, 0),
+  ('dddddddd-dddd-dddd-dddd-dddddddddddd', 'dusum-urunu', 'Düşüm Ürünü', 'device', 30, 10);
 
 insert into public.user_roles (profile_id, role)
 values ('11111111-1111-1111-1111-111111111111', 'admin');
@@ -89,6 +90,18 @@ select is((select count(*)::int from public.stock_movements
             where product_id = 'cccccccc-cccc-cccc-cccc-cccccccccccc'
               and reason = 'manual'), 1,
           'ikinci giris manual olarak etiketlendi');
+
+-- Ilk hareket DUSUM ise 'initial' denemez: acilis stogu degil, duzeltme.
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}';
+select lives_ok(
+  $$select public.set_product_stock('dddddddd-dddd-dddd-dddd-dddddddddddd', 4, null)$$,
+  'admin ilk hareket olarak stok dusurur');
+reset role;
+
+select is((select reason::text from public.stock_movements
+            where product_id = 'dddddddd-dddd-dddd-dddd-dddddddddddd'), 'manual',
+          'ilk hareket dusum ise manual olarak etiketlendi');
 
 select * from finish();
 rollback;

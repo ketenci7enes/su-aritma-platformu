@@ -502,7 +502,7 @@ begin
   values
     (p_product_id, v_delta, p_new_stock,
      (case
-        when not exists (
+        when v_delta > 0 and not exists (
           select 1 from public.stock_movements where product_id = p_product_id
         ) then 'initial'
         else 'manual'
