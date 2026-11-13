@@ -178,3 +178,25 @@ Bu tablolar şemada yok; eklenirken §3–§7 kuralları uygulanır:
 - [ ] §12'deki saldırı regresyon testleri yazıldı ve geçiyor
 - [ ] `database.types.ts` güncel; demo mod arayüzü uyumlu
 - [ ] Advisor uyarısı yok
+
+## 15. Uygulama notu (2026-11-13, Dilim 0)
+
+Bu bölüm kural değil, uygulanmış gerçeğin kaydıdır:
+
+- Migration sırası: `20261111000001_init.sql` → `20261113000001_security_hardening.sql` →
+  `20261113000002_admin_data_foundation.sql`. Üçü birlikte `db reset` ile hatasız uygulanır.
+- `init.sql` yalnızca §0.1 istisnasıyla düzeltildi: `filter_due_at` generated kolonu kaldırıldı,
+  değeri `set_filter_due_at()` trigger'ı yazar (`before insert or update of installed_at`).
+- Admin yetkisi `profiles.role` ile değil, `public.user_roles` + `public.is_admin()` ile verilir.
+  Rol ataması yalnız SQL/`service_role` ile yapılır; istemcinin `user_roles` yazma yetkisi yoktur.
+- Admin yazımı tablo/kolon grant'i ile açılmaz; yalnız RPC (`upsert_product`,
+  `set_product_price`, `set_product_active`, `set_product_stock`, `moderate_review`,
+  `advance_order_status`, `cancel_order`) üzerinden yapılır.
+- Stok düşüşü `mark_order_paid` içinde, iadesi `cancel_order` içinde gerçekleşir; her ikisi de
+  `stock_movements` tablosuna değiştirilemez denetim izi yazar.
+- `b2b_leads` anon insert kaldırıldı; form `POST /api/b2b-lead` (service_role + rate limit)
+  üzerinden yazılır.
+- Regresyon kapısı: `supabase/tests/001…005` pgTAP dosyaları; CI'daki `db` işi
+  `supabase db reset` + `supabase test db` koşar.
+- Katalog seed'i `supabase/seed.sql` (11 ürün); yalnız insert sırasında stok yazar,
+  sonraki çalıştırmalarda stok/pasiflik değerlerini ezmez.
