@@ -167,3 +167,322 @@ $$;
 
 revoke all on function public.cancel_order(uuid) from public, anon, authenticated;
 grant execute on function public.cancel_order(uuid) to authenticated;
+
+
+-- ─────────────────────── roller ───────────────────────
+create type app_role as enum ('customer', 'technician', 'b2b', 'admin');
+
+create table public.user_roles (
+  profile_id uuid not null references public.profiles (id) on delete cascade,
+  role app_role not null,
+  granted_at timestamptz not null default now(),
+  granted_by uuid references public.profiles (id) on delete set null,
+  primary key (profile_id, role)
+);
+
+alter table public.user_roles enable row level security;
+
+create policy "user_roles_select_self" on public.user_roles for select to authenticated
+  using ((select auth.uid()) = profile_id);
+
+-- INSERT/UPDATE/DELETE politikası YOK → istemci yazamaz. Rol ataması yalnız
+-- service_role / SQL ile yapılır (bkz. supabase/README.md).
+revoke all on public.user_roles from anon, authenticated;
+grant select on public.user_roles to authenticated;
+grant all on public.user_roles to service_role;
+
+create or replace function public.is_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1 from public.user_roles
+    where profile_id = (select auth.uid()) and role = 'admin'
+  );
+$$;
+
+revoke all on function public.is_admin() from public, anon, authenticated;
+grant execute on function public.is_admin() to authenticated;
+
+
+-- ─────────────────────── admin yazma yüzeyi: YALNIZ RPC (§7) ───────────────────────
+-- products.price, reviews.is_approved, orders.status istemciden yazılamaz (RULES §6, §13#7).
+-- Bu yüzden tablo/kolon düzeyinde yazma yetkisi VERİLMEZ; yalnız okuma politikaları açılır.
+
+alter table public.products add column updated_at timestamptz not null default now();
+create trigger products_updated_at
+  before update on public.products
+  for each row execute function public.set_updated_at();
+
+create policy "products_admin_select" on public.products for select to authenticated
+  using ((select public.is_admin()));
+
+create policy "stock_movements_admin_select" on public.stock_movements for select to authenticated
+  using ((select public.is_admin()));
+
+create policy "reviews_admin_select" on public.reviews for select to authenticated
+  using ((select public.is_admin()));
+
+create policy "orders_admin_select" on public.orders for select to authenticated
+  using ((select public.is_admin()));
+
+-- Ürün oluştur/güncelle (silme yok: RULES §8 "products silinmez, is_active=false").
+create or replace function public.upsert_product(
+  p_id uuid,
+  p_slug text,
+  p_name text,
+  p_category public.product_category,
+  p_price_try numeric,
+  p_summary text default null,
+  p_is_active boolean default true
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_id uuid;
+begin
+  if not public.is_admin() then
+    raise exception 'not_admin' using errcode = '42501';
+  end if;
+  if p_price_try is null or p_price_try < 0 then
+    raise exception 'invalid_price';
+  end if;
+  if p_slug is null or p_slug !~ '^[a-z0-9]+(-[a-z0-9]+)*$' then
+    raise exception 'invalid_slug';
+  end if;
+  if p_name is null or char_length(p_name) > 200 then
+    raise exception 'invalid_name';
+  end if;
+
+  if p_id is null then
+    insert into public.products (slug, name, category, price_try, summary, is_active)
+    values (p_slug, p_name, p_category, p_price_try, p_summary, p_is_active)
+    returning id into v_id;
+  else
+    update public.products
+       set slug = p_slug, name = p_name, category = p_category,
+           price_try = p_price_try, summary = p_summary, is_active = p_is_active
+     where id = p_id
+    returning id into v_id;
+    if v_id is null then
+      raise exception 'product_not_found';
+    end if;
+  end if;
+  return v_id;
+end;
+$$;
+
+create or replace function public.set_product_price(p_product_id uuid, p_price_try numeric)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if not public.is_admin() then
+    raise exception 'not_admin' using errcode = '42501';
+  end if;
+  if p_price_try is null or p_price_try < 0 then
+    raise exception 'invalid_price';
+  end if;
+  update public.products set price_try = p_price_try where id = p_product_id;
+  if not found then
+    raise exception 'product_not_found';
+  end if;
+end;
+$$;
+
+create or replace function public.set_product_active(p_product_id uuid, p_is_active boolean)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if not public.is_admin() then
+    raise exception 'not_admin' using errcode = '42501';
+  end if;
+  update public.products set is_active = p_is_active where id = p_product_id;
+  if not found then
+    raise exception 'product_not_found';
+  end if;
+end;
+$$;
+
+create or replace function public.moderate_review(p_review_id uuid, p_approve boolean)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if not public.is_admin() then
+    raise exception 'not_admin' using errcode = '42501';
+  end if;
+  update public.reviews set is_approved = p_approve where id = p_review_id;
+  if not found then
+    raise exception 'review_not_found';
+  end if;
+end;
+$$;
+
+-- Sipariş durumunu yalnız paid SONRASI adımlarda ilerletir.
+-- 'paid' → mark_order_paid (ödeme), 'cancelled' → cancel_order (stok iadesi) kullanır.
+create or replace function public.advance_order_status(
+  p_order_id uuid,
+  p_new_status public.order_status
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if not public.is_admin() then
+    raise exception 'not_admin' using errcode = '42501';
+  end if;
+  if p_new_status not in ('shipped', 'delivered', 'installed') then
+    raise exception 'use_order_workflow';
+  end if;
+  update public.orders set status = p_new_status where id = p_order_id;
+  if not found then
+    raise exception 'order_not_found';
+  end if;
+end;
+$$;
+
+-- cancel_order'ın gövdesi aynen korunur; tek fark sahiplik koşulu:
+--   where id = p_order_id and (profile_id = v_uid or public.is_admin()) for update;
+create or replace function public.cancel_order(p_order_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid := (select auth.uid());
+  v_status public.order_status;
+  v_after int;
+  r record;
+begin
+  if v_uid is null then
+    raise exception 'not_authenticated' using errcode = '28000';
+  end if;
+
+  select status into v_status
+    from public.orders
+   where id = p_order_id and (profile_id = v_uid or public.is_admin())
+   for update;
+  if not found then
+    raise exception 'order_not_found';
+  end if;
+  if v_status not in ('pending', 'paid') then
+    raise exception 'invalid_order_transition';
+  end if;
+
+  if v_status = 'paid' then
+    for r in
+      select product_id, (-sum(delta))::int as qty
+        from public.stock_movements
+       where order_id = p_order_id and reason = 'sale'
+       group by product_id
+    loop
+      -- İade daha önce yapıldıysa stoğa DOKUNMA; kontrol artıştan ÖNCE olmalı.
+      if exists (
+        select 1 from public.stock_movements
+         where order_id = p_order_id and product_id = r.product_id and reason = 'cancel'
+      ) then
+        continue;
+      end if;
+
+      update public.products set stock = stock + r.qty
+       where id = r.product_id
+      returning stock into v_after;
+
+      insert into public.stock_movements
+        (product_id, delta, stock_after, reason, order_id, actor_id)
+      values
+        (r.product_id, r.qty, v_after, 'cancel', p_order_id, v_uid);
+    end loop;
+  end if;
+
+  update public.orders set status = 'cancelled' where id = p_order_id;
+end;
+$$;
+
+revoke all on function public.upsert_product(uuid, text, text, public.product_category, numeric, text, boolean)
+  from public, anon, authenticated;
+grant execute on function public.upsert_product(uuid, text, text, public.product_category, numeric, text, boolean)
+  to authenticated;
+
+revoke all on function public.set_product_price(uuid, numeric) from public, anon, authenticated;
+grant execute on function public.set_product_price(uuid, numeric) to authenticated;
+
+revoke all on function public.set_product_active(uuid, boolean) from public, anon, authenticated;
+grant execute on function public.set_product_active(uuid, boolean) to authenticated;
+
+revoke all on function public.moderate_review(uuid, boolean) from public, anon, authenticated;
+grant execute on function public.moderate_review(uuid, boolean) to authenticated;
+
+revoke all on function public.advance_order_status(uuid, public.order_status)
+  from public, anon, authenticated;
+grant execute on function public.advance_order_status(uuid, public.order_status) to authenticated;
+
+revoke all on function public.cancel_order(uuid) from public, anon, authenticated;
+grant execute on function public.cancel_order(uuid) to authenticated;
+
+
+-- ─────────────────────── elle stok girişi ───────────────────────
+-- Admin paneli ürünün başlangıç adedini buradan girer; her değişiklik harekete yazılır.
+create or replace function public.set_product_stock(
+  p_product_id uuid,
+  p_new_stock int,
+  p_note text default null
+)
+returns int
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_current int;
+  v_delta int;
+begin
+  if not public.is_admin() then
+    raise exception 'not_admin' using errcode = '42501';
+  end if;
+  if p_new_stock is null or p_new_stock < 0 then
+    raise exception 'invalid_stock';
+  end if;
+
+  select stock into v_current from public.products where id = p_product_id for update;
+  if not found then
+    raise exception 'product_not_found';
+  end if;
+
+  v_delta := p_new_stock - v_current;
+  if v_delta = 0 then
+    return v_current;
+  end if;
+
+  update public.products set stock = p_new_stock where id = p_product_id;
+
+  insert into public.stock_movements
+    (product_id, delta, stock_after, reason, actor_id, note)
+  values
+    (p_product_id, v_delta, p_new_stock,
+     (case when v_current = 0 and p_note is not null then 'initial' else 'manual' end)::public.stock_reason,
+     (select auth.uid()), p_note);
+
+  return p_new_stock;
+end;
+$$;
+
+revoke all on function public.set_product_stock(uuid, int, text) from public, anon, authenticated;
+grant execute on function public.set_product_stock(uuid, int, text) to authenticated;
