@@ -34,15 +34,37 @@ revoke all on public.stock_movements from anon, authenticated;
 grant select on public.stock_movements to authenticated;
 -- Hardening'in `grant all ... to service_role` bloğu bu tablodan ÖNCE koştu; açıkça tekrarla.
 grant all on public.stock_movements to service_role;
+-- grant all TRUNCATE içerir; row trigger truncate'i görmediği için yetki ayrıca kapatılır.
+revoke truncate on public.stock_movements from service_role, anon, authenticated;
 
--- Denetim izi değiştirilemez: update/delete her zaman hata verir.
+-- Denetim izi ilke olarak değiştirilemez. TEK istisna: profil silindiğinde
+-- FK'nin (on delete set null) actor_id'yi boşaltması — KVKK anonimleştirmesi.
+-- Diğer tüm UPDATE'ler ve DELETE reddedilir. TRUNCATE ise yetkiyle kapatılır
+-- (row trigger TRUNCATE'i görmez).
 create or replace function public.stock_movements_immutable()
 returns trigger
 language plpgsql
 set search_path = ''
 as $$
 begin
-  raise exception 'stock_movements_immutable';
+  if tg_op = 'DELETE' then
+    raise exception 'stock_movements_immutable';
+  end if;
+
+  if new.id is distinct from old.id
+     or new.product_id is distinct from old.product_id
+     or new.delta is distinct from old.delta
+     or new.stock_after is distinct from old.stock_after
+     or new.reason is distinct from old.reason
+     or new.order_id is distinct from old.order_id
+     or new.note is distinct from old.note
+     or new.created_at is distinct from old.created_at
+     or (new.actor_id is distinct from old.actor_id and new.actor_id is not null)
+  then
+    raise exception 'stock_movements_immutable';
+  end if;
+
+  return new;
 end;
 $$;
 
@@ -139,6 +161,7 @@ begin
         from public.stock_movements
        where order_id = p_order_id and reason = 'sale'
        group by product_id
+       order by product_id
     loop
       -- İade daha önce yapıldıysa stoğa DOKUNMA. Kontrol, stok artışından ÖNCE olmalı;
       -- aksi hâlde "önce artır, sonra çakışmayı yut" sessiz çift iade üretir.
@@ -392,6 +415,7 @@ begin
         from public.stock_movements
        where order_id = p_order_id and reason = 'sale'
        group by product_id
+       order by product_id
     loop
       -- İade daha önce yapıldıysa stoğa DOKUNMA; kontrol artıştan ÖNCE olmalı.
       if exists (
@@ -477,7 +501,12 @@ begin
     (product_id, delta, stock_after, reason, actor_id, note)
   values
     (p_product_id, v_delta, p_new_stock,
-     (case when v_current = 0 and p_note is not null then 'initial' else 'manual' end)::public.stock_reason,
+     (case
+        when not exists (
+          select 1 from public.stock_movements where product_id = p_product_id
+        ) then 'initial'
+        else 'manual'
+      end)::public.stock_reason,
      (select auth.uid()), p_note);
 
   return p_new_stock;

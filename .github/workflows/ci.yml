@@ -102,6 +102,7 @@ jobs:
           version: 3.1.0
       - run: supabase start
       - run: supabase db reset
+      - run: supabase db lint
       - run: supabase test db
       - if: always()
         run: supabase stop --no-backup

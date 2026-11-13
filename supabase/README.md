@@ -55,5 +55,9 @@ işlem SQL Editor veya `service_role` ile yapılır).
 - `b2b_leads` yalnız `POST /api/b2b-lead` üzerinden yazılır (anon insert kapalı).
 - `seed.sql` yalnızca katalog verisidir ve idempotenttir; stok/pasiflik değerlerini ezmez.
   Ürün silinmez, `is_active = false` ile pasife alınır.
-- Testler: `supabase/tests/00{1..5}_*.sql` — her dosya kendi `begin; … rollback;` bloğunda
+- Testler: `supabase/tests/00{1..6}_*.sql` — her dosya kendi `begin; … rollback;` bloğunda
   çalışır, `plan(n)` ile bitecek test sayısını bildirir.
+- B2B hız sınırı: `TRUSTED_PROXY=true` değilse tüm istemciler tek sayaç kovasını paylaşır
+  (10 dakikada 5 istek). Üretimde `TRUSTED_PROXY=true` verilmeli VE platformun yazdığı
+  `cf-connecting-ip`/`x-real-ip` başlığı gerçekten doğrulanmalıdır; aksi hâlde ya toplu
+  kilitlenme ya da başlık uydurarak limit atlatma riski vardır.

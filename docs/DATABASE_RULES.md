@@ -30,17 +30,17 @@ Okuma izolasyonu (başkasının siparişi/profili, `technicians`, `b2b_leads`) *
 1. `installations` tablosunda şu satırı değiştir:
    `filter_due_at timestamptz generated always as (installed_at + interval '180 days') stored,`
    → `filter_due_at timestamptz,`
-   ve tablonun altına trigger ekle:
+   ve tablonun altına trigger ekle (uygulanan sürüm: değer koşulsuz yazılır ve
+   `installed_at` güncellenince tazelenir):
 ```sql
 create or replace function public.set_filter_due_at()
 returns trigger language plpgsql set search_path = '' as $$
 begin
-  if new.filter_due_at is null then
-    new.filter_due_at := new.installed_at + interval '180 days';
-  end if;
+  new.filter_due_at := new.installed_at + interval '180 days';
   return new;
 end; $$;
-create trigger installations_filter_due before insert on public.installations
+create trigger installations_filter_due
+  before insert or update of installed_at on public.installations
   for each row execute function public.set_filter_due_at();
 ```
 2. İlk satırdaki `create extension if not exists pgcrypto;` satırını sil.
@@ -90,7 +90,9 @@ Sonra `supabase/migrations/20261113000001_security_hardening.sql` eklenir (bu re
 - **MUST** `update` policy'sinde `using` + `with check`.
 - **MUST NOT** `using (true)` / `with check (true)` (yalnızca herkese açık katalog `select`'i hariç).
 - **MUST** `insert` policy'si, kullanıcının **kendi belirlememesi gereken** alanları sabitler: `status = 'open'`, `is_approved = false`, `status = 'new'` gibi. İlişkili kayıt (installation, order) sahibine ait mi diye `exists(...)` ile doğrular.
-- **MUST** anon'a yalnızca: `products`, `regions`, `water_hardness`, `reviews` (select) ve `b2b_leads` (kolon-kısıtlı insert).
+- **MUST** anon'a yalnızca: `products`, `regions`, `water_hardness`, `reviews` (select).
+  `b2b_leads` yazımı anon'a kapalıdır; form `POST /api/b2b-lead` (service_role + rate limit)
+  üzerinden yazılır (§15).
 
 ## 6. Yetkiler (GRANT) — RLS'in ikinci kilidi
 Supabase `public`'teki yeni tabloları varsayılan olarak `anon`/`authenticated`'a tam yetkiyle açar. Bu yüzden:
